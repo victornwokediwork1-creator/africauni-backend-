@@ -1,1 +1,245 @@
 
+<!DOCTYPE html>
+<html>
+<head>
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>AfricaUni</title>
+
+<style>
+body{
+  margin:0;
+  font-family:Arial;
+  background:#0f172a;
+  color:white;
+}
+
+/* HEADER */
+header{
+  position:fixed;
+  top:0;
+  left:0;
+  right:0;
+  padding:12px;
+  background:linear-gradient(90deg,#2563eb,#06b6d4,#8b5cf6);
+  font-weight:bold;
+  z-index:1000;
+}
+
+/* LAYOUT */
+.container{
+  padding-top:60px;
+  padding:15px;
+}
+
+.hidden{display:none}
+
+/* BUTTONS */
+button{
+  padding:10px;
+  margin:5px;
+  border:none;
+  border-radius:8px;
+  background:#2563eb;
+  color:white;
+}
+
+/* CARDS */
+.card{
+  background:#1e293b;
+  padding:10px;
+  margin:10px 0;
+  border-radius:12px;
+}
+
+/* INPUTS */
+input{
+  padding:10px;
+  width:90%;
+  margin:5px 0;
+  border-radius:8px;
+  border:none;
+}
+
+/* NAV */
+.nav{
+  display:flex;
+  justify-content:space-around;
+  background:#111827;
+  padding:10px;
+  position:fixed;
+  bottom:0;
+  width:100%;
+}
+</style>
+</head>
+
+<body>
+
+<header>🎓 AfricaUni</header>
+
+<!-- WELCOME -->
+<div id="welcome" class="container">
+  <h2>Welcome to AfricaUni</h2>
+  <button onclick="goLogin()">Next</button>
+</div>
+
+<!-- LOGIN -->
+<div id="login" class="container hidden">
+  <h2>Login</h2>
+  <input id="user" placeholder="Enter name">
+  <button onclick="enter()">Enter</button>
+</div>
+
+<!-- APP -->
+<div id="app" class="hidden">
+
+  <div class="container">
+
+    <!-- POSTS -->
+    <div id="postsSection">
+      <h3>📢 Posts</h3>
+
+      <input id="text" placeholder="What's happening?">
+      <input type="file" id="img">
+      <button onclick="post()">Upload</button>
+
+      <div id="posts"></div>
+    </div>
+
+    <!-- CHAT -->
+    <div id="chatSection" class="hidden">
+      <h3>💬 Chat Room</h3>
+
+      <input id="room" placeholder="Room name">
+      <button onclick="join()">Join</button>
+
+      <div id="msgs"></div>
+
+      <input id="msg" placeholder="Message">
+      <button onclick="send()">Send</button>
+    </div>
+
+    <!-- MEET -->
+    <div id="meetSection" class="hidden">
+      <h3>📡 Meet</h3>
+
+      <video id="cam" autoplay playsinline></video>
+
+      <button onclick="startCam()">Start Camera</button>
+      <button onclick="stopCam()">Stop</button>
+
+      <p id="status">Idle</p>
+    </div>
+
+  </div>
+
+  <!-- NAV -->
+  <div class="nav">
+    <button onclick="show('postsSection')">Posts</button>
+    <button onclick="show('chatSection')">Chat</button>
+    <button onclick="show('meetSection')">Meet</button>
+  </div>
+
+</div>
+
+<script src="/socket.io/socket.io.js"></script>
+<script>
+const socket = io();
+let currentUser = "";
+let room = "";
+let stream;
+
+/* NAV FLOW */
+function goLogin(){
+  document.getElementById("welcome").classList.add("hidden");
+  document.getElementById("login").classList.remove("hidden");
+}
+
+function enter(){
+  currentUser = document.getElementById("user").value;
+  document.getElementById("login").classList.add("hidden");
+  document.getElementById("app").classList.remove("hidden");
+}
+
+/* SWITCH */
+function show(id){
+  document.getElementById("postsSection").classList.add("hidden");
+  document.getElementById("chatSection").classList.add("hidden");
+  document.getElementById("meetSection").classList.add("hidden");
+
+  document.getElementById(id).classList.remove("hidden");
+}
+
+/* ---------------- POSTS ---------------- */
+async function post(){
+  const text = document.getElementById("text").value;
+  const img = document.getElementById("img").files[0];
+
+  const form = new FormData();
+  form.append("text", text);
+  form.append("user", currentUser);
+  if(img) form.append("image", img);
+
+  await fetch("/post", { method:"POST", body:form });
+  loadPosts();
+}
+
+async function loadPosts(){
+  const res = await fetch("/posts");
+  const data = await res.json();
+
+  document.getElementById("posts").innerHTML =
+    data.map(p => `
+      <div class="card">
+        <b>${p.user}</b>
+        <p>${p.text}</p>
+        ${p.image ? `<img src="${p.image}" width="100%">` : ""}
+      </div>
+    `).join("");
+}
+loadPosts();
+
+socket.on("new-post", loadPosts);
+
+/* ---------------- CHAT ---------------- */
+function join(){
+  room = document.getElementById("room").value;
+  socket.emit("join", room);
+}
+
+socket.on("history", data=>{
+  document.getElementById("msgs").innerHTML =
+    data.map(m=>`<p><b>${m.user}:</b> ${m.msg}</p>`).join("");
+});
+
+socket.on("new", msg=>{
+  document.getElementById("msgs").innerHTML +=
+    `<p><b>${msg.user}:</b> ${msg.msg}</p>`;
+});
+
+function send(){
+  socket.emit("msg", {
+    room,
+    user: currentUser,
+    msg: document.getElementById("msg").value
+  });
+}
+
+/* ---------------- CAMERA ---------------- */
+async function startCam(){
+  stream = await navigator.mediaDevices.getUserMedia({ video:true });
+  document.getElementById("cam").srcObject = stream;
+  document.getElementById("status").innerText = "Camera ON";
+}
+
+function stop(){
+  if(stream){
+    stream.getTracks().forEach(t=>t.stop());
+  }
+  document.getElementById("cam").srcObject = null;
+  document.getElementById("status").innerText = "Stopped";
+}
+</script>
+
+</body>
+</html>
